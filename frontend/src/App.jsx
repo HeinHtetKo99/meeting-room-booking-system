@@ -12,30 +12,17 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  compareByStartTime,
+  datetimeLocalToUtcIso,
+  formatBookingTimeRange,
+  formatTimestamp,
+} from "@/utils/datetime";
 import "./App.css";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
 const ROLE_OPTIONS = ["admin", "owner", "user"];
-
-function formatDate(iso) {
-  return new Date(iso).toLocaleString();
-}
-
-function formatTimeRange(startIso, endIso) {
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  const sameDay = start.toDateString() === end.toDateString();
-  const datePart = (date) =>
-    date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  const timePart = (date) =>
-    date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-
-  if (sameDay) {
-    return `${datePart(start)}, ${timePart(start)} – ${timePart(end)}`;
-  }
-  return `${datePart(start)}, ${timePart(start)} – ${datePart(end)}, ${timePart(end)}`;
-}
 
 function getRoleHint(role) {
   if (role === "admin") {
@@ -184,7 +171,7 @@ function App() {
   }, [message]);
 
   const sortedBookings = useMemo(
-    () => [...bookings].sort((a, b) => new Date(a.startTime) - new Date(b.startTime)),
+    () => [...bookings].sort(compareByStartTime),
     [bookings],
   );
 
@@ -209,7 +196,10 @@ function App() {
       return;
     }
     request(async () => {
-      await client.post("/bookings", bookingForm);
+      await client.post("/bookings", {
+        startTime: datetimeLocalToUtcIso(bookingForm.startTime),
+        endTime: datetimeLocalToUtcIso(bookingForm.endTime),
+      });
       setBookingForm({ startTime: "", endTime: "" });
       await refreshData();
       setMessage("Booking created.");
@@ -367,7 +357,9 @@ function App() {
 
         <section className="card">
           <h2>Create Booking</h2>
-          <p className="section-hint">Pick a start and end time. Overlapping bookings are not allowed.</p>
+          <p className="section-hint">
+            Pick a start and end time in your local timezone. Overlapping bookings are not allowed.
+          </p>
           <form className="form-grid" onSubmit={handleCreateBooking}>
             <label>
               Start Time
@@ -421,7 +413,7 @@ function App() {
                 <li key={booking.id} className={`booking-item${isOwnBooking ? " own" : ""}`}>
                   <div className="booking-info">
                     <p className="booking-when">
-                      {formatTimeRange(booking.startTime, booking.endTime)}
+                      {formatBookingTimeRange(booking.startTime, booking.endTime)}
                       {isOwnBooking && <span className="own-badge">Yours</span>}
                     </p>
                     <p className="booking-sub">
@@ -430,7 +422,7 @@ function App() {
                     <p className="booking-ids">
                       <span>Booking ID: {booking.id}</span>
                       <span>User ID: {booking.userId}</span>
-                      <span>Created: {formatDate(booking.createdAt)}</span>
+                      <span>Created: {formatTimestamp(booking.createdAt)}</span>
                     </p>
                   </div>
                   <button
@@ -555,9 +547,9 @@ function App() {
                     <p className="grouped-empty">No bookings</p>
                   ) : (
                     <ul className="grouped-bookings">
-                      {group.bookings.map((booking) => (
+                      {[...group.bookings].sort(compareByStartTime).map((booking) => (
                         <li key={booking.id}>
-                          {formatTimeRange(booking.startTime, booking.endTime)}
+                          {formatBookingTimeRange(booking.startTime, booking.endTime)}
                         </li>
                       ))}
                     </ul>

@@ -12,8 +12,14 @@ function enrichBooking(booking) {
   };
 }
 
+function sortByStartTime(bookings) {
+  return [...bookings].sort(
+    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+  );
+}
+
 function listBookings() {
-  return store.getAllBookings().map(enrichBooking);
+  return sortByStartTime(store.getAllBookings()).map(enrichBooking);
 }
 
 function createBooking(currentUser, { startTime, endTime }) {
@@ -59,7 +65,9 @@ function getBookingsGroupedByUser() {
     userId: user.id,
     name: user.name,
     role: user.role,
-    bookings: store.getAllBookings().filter((booking) => booking.userId === user.id),
+    bookings: sortByStartTime(
+      store.getAllBookings().filter((booking) => booking.userId === user.id),
+    ),
   }));
 }
 
