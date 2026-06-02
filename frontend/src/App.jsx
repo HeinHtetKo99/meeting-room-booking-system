@@ -486,13 +486,22 @@ function App() {
                   {user.name} ({user.id})
                 </div>
                 <div className="admin-role">
-                  <select value={user.role} onChange={(event) => handleRoleChange(user.id, event.target.value)}>
-                    {ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
+                  {currentUser.id === user.id ? (
+                    <span className="admin-role-locked" title="You cannot change your own role">
+                      {user.role}
+                    </span>
+                  ) : (
+                    <select
+                      value={user.role}
+                      onChange={(event) => handleRoleChange(user.id, event.target.value)}
+                    >
+                      {ROLE_OPTIONS.map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="admin-actions">
                   <button

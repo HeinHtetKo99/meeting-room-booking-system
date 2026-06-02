@@ -10,7 +10,10 @@ function createUser(req, res) {
 }
 
 function updateUserRole(req, res) {
-  return sendServiceResult(res, userService.changeUserRole(req.params.id, req.body.role));
+  return sendServiceResult(
+    res,
+    userService.changeUserRole(req.params.id, req.body.role, req.currentUser.id),
+  );
 }
 
 function deleteUser(req, res) {

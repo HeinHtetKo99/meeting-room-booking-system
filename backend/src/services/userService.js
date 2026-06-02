@@ -36,7 +36,11 @@ function createUser({ name, role }) {
   return { data: store.addUser(user) };
 }
 
-function changeUserRole(userId, role) {
+function changeUserRole(userId, role, actingAdminId) {
+  if (userId === actingAdminId) {
+    return { error: { status: 400, message: "You cannot change your own role." } };
+  }
+
   if (!ALL_ROLES.includes(role)) {
     return { error: { status: 400, message: "Role must be one of: admin, owner, user." } };
   }
