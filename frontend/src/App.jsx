@@ -94,9 +94,17 @@ function App() {
     });
   }, [selectedUserId]);
 
-  async function request(action) {
-    setError(null);
-    setMessage("");
+  async function refreshData() {
+    await loadBookings();
+    await loadOwnerAdminData();
+  }
+
+  async function request(action, options = {}) {
+    const { silent = false } = options;
+    if (!silent) {
+      setError(null);
+      setMessage("");
+    }
     try {
       await action();
     } catch (reqError) {
@@ -160,12 +168,12 @@ function App() {
     }
     request(async () => {
       await loadBookings();
-    });
+    }, { silent: true });
   }, [selectedUserId]);
 
   useEffect(() => {
-    request(loadOwnerAdminData);
-  }, [currentUser, bookings]);
+    request(loadOwnerAdminData, { silent: true });
+  }, [currentUser]);
 
   useEffect(() => {
     if (!message) {
@@ -203,8 +211,8 @@ function App() {
     request(async () => {
       await client.post("/bookings", bookingForm);
       setBookingForm({ startTime: "", endTime: "" });
+      await refreshData();
       setMessage("Booking created.");
-      await loadBookings();
     });
   };
 
@@ -232,8 +240,8 @@ function App() {
     closeBookingDeleteDialog();
     request(async () => {
       await client.delete(`/bookings/${bookingId}`);
+      await refreshData();
       setMessage("Booking deleted.");
-      await loadBookings();
     });
   }
 
@@ -256,12 +264,12 @@ function App() {
     closeUserDeleteDialog();
     request(async () => {
       await client.delete(`/users/${userId}`);
-      setMessage("User deleted with their bookings.");
       const refreshedUsers = await loadUsers();
-      await loadBookings();
+      await refreshData();
       if (selectedUserId === userId && refreshedUsers.length > 0) {
         setSelectedUserId(refreshedUsers[0].id);
       }
+      setMessage("User deleted with their bookings.");
     });
   }
 
@@ -285,16 +293,16 @@ function App() {
     request(async () => {
       await client.post("/users", newUserForm);
       setNewUserForm({ name: "", role: "user" });
-      setMessage("User created.");
       await loadUsers();
+      setMessage("User created.");
     });
   };
 
   const handleRoleChange = (userId, role) => {
     request(async () => {
       await client.patch(`/users/${userId}/role`, { role });
-      setMessage("User role updated.");
       await loadUsers();
+      setMessage("User role updated.");
     });
   };
 
