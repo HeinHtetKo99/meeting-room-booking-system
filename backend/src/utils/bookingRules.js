@@ -23,6 +23,9 @@ function validateBookingTimes(startDate, endDate) {
   if (startDate >= endDate) {
     return "startTime must be before endTime.";
   }
+  if (startDate.getTime() < Date.now()) {
+    return "startTime cannot be in the past.";
+  }
   if (hasOverlap(startDate, endDate)) {
     return "Booking overlaps with an existing booking.";
   }
