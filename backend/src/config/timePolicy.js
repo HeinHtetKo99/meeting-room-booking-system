@@ -4,10 +4,12 @@
  * - All booking times are parsed from ISO 8601 strings and stored in UTC.
  * - Comparisons use native Date objects in server runtime.
  * - Back-to-back bookings are allowed when endTime === next startTime.
+ * - New bookings must have startTime in the future (server UTC clock).
  */
 const TIME_POLICY = {
   timezone: "UTC ISO strings",
   backToBackAllowed: true,
+  pastStartAllowed: false,
   overlapRule: "Ranges overlap when start < existingEnd AND end > existingStart",
 };
 

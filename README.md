@@ -68,6 +68,7 @@ backend/src/
 - Bookings must not overlap (identical, partial, or nested ranges)
 - **Back-to-back allowed:** `endTime` of one booking may equal `startTime` of the next
 - All times stored as **UTC ISO** strings (see `/health` and `config/timePolicy.js`)
+- **Start time must be in the future** (validated on frontend and backend)
 - Clear error responses for invalid operations (400 / 403 / 409)
 
 ## User deletion policy

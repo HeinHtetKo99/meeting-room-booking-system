@@ -57,3 +57,33 @@ export function formatTimestamp(iso) {
 export function compareByStartTime(a, b) {
   return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
 }
+
+/** Matches backend bookingRules past-start check (UTC instant). */
+export function isStartTimeInPast(localValue) {
+  const iso = datetimeLocalToUtcIso(localValue);
+  if (!iso) {
+    return false;
+  }
+  return new Date(iso).getTime() < Date.now();
+}
+
+/** Value for datetime-local `min` (local wall clock, minute precision). */
+export function toDatetimeLocalInputValue(date = new Date()) {
+  const value = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(value.getTime())) {
+    return "";
+  }
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+}
+
+/** Later of two datetime-local strings (YYYY-MM-DDTHH:mm). */
+export function maxDatetimeLocal(a, b) {
+  if (!a) {
+    return b || "";
+  }
+  if (!b) {
+    return a;
+  }
+  return a > b ? a : b;
+}

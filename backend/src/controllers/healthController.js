@@ -8,6 +8,9 @@ function getHealth(req, res) {
       ? "Allowed (endTime equal to another booking startTime is valid)."
       : "Not allowed.",
     overlapRule: TIME_POLICY.overlapRule,
+    pastStartPolicy: TIME_POLICY.pastStartAllowed
+      ? "Past start times are allowed."
+      : "Rejected — startTime must be in the future.",
   });
 }
 

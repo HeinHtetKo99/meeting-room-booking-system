@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { TriangleAlert } from "lucide-react";
 import {
@@ -12,17 +12,38 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { getApiErrorMessage } from "@/utils/apiError";
 import {
   compareByStartTime,
   datetimeLocalToUtcIso,
   formatBookingTimeRange,
   formatTimestamp,
+  isStartTimeInPast,
+  maxDatetimeLocal,
+  toDatetimeLocalInputValue,
 } from "@/utils/datetime";
+
+const PAST_START_ERROR = "startTime cannot be in the past.";
 import "./App.css";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
 const ROLE_OPTIONS = ["admin", "owner", "user"];
+
+function mapBookingFieldErrors(message) {
+  if (!message) {
+    return { startTime: true, endTime: true };
+  }
+  const text = message.toLowerCase();
+  const startTime =
+    text.includes("starttime") || text.includes("past") || text.includes("overlap");
+  const endTime =
+    text.includes("endtime") || text.includes("overlap") || text.includes("before endtime");
+  if (!startTime && !endTime) {
+    return { startTime: true, endTime: true };
+  }
+  return { startTime, endTime };
+}
 
 function getRoleHint(role) {
   if (role === "admin") {
@@ -58,6 +79,7 @@ function App() {
     user: null,
   });
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const pendingDeleteBookingIdRef = useRef(null);
 
   const [bookingForm, setBookingForm] = useState({
     startTime: "",
@@ -87,7 +109,7 @@ function App() {
   }
 
   async function request(action, options = {}) {
-    const { silent = false } = options;
+    const { silent = false, onError } = options;
     if (!silent) {
       setError(null);
       setMessage("");
@@ -96,7 +118,10 @@ function App() {
       await action();
     } catch (reqError) {
       const status = reqError.response?.status;
-      const serverMessage = reqError.response?.data?.error;
+      const serverMessage = getApiErrorMessage(reqError);
+      if (onError?.({ message: serverMessage, status }) === true) {
+        return;
+      }
       const details =
         status === 403
           ? "You do not have permission for this action with the selected role."
@@ -175,27 +200,31 @@ function App() {
     [bookings],
   );
 
+  const minBookingStart = toDatetimeLocalInputValue();
+  const minBookingEnd = maxDatetimeLocal(
+    minBookingStart,
+    bookingForm.startTime && !isStartTimeInPast(bookingForm.startTime)
+      ? bookingForm.startTime
+      : "",
+  );
+
   const canManageUsers = currentUser?.role === "admin";
   const canViewOwnerData = currentUser?.role === "owner" || currentUser?.role === "admin";
 
-  const handleCreateBooking = (event) => {
+  const handleCreateBooking = async (event) => {
     event.preventDefault();
     setBookingFormError("");
     setBookingFieldErrors({ startTime: false, endTime: false });
-    if (!bookingForm.startTime || !bookingForm.endTime) {
-      setBookingFormError("Start time and end time are required.");
-      setBookingFieldErrors({
-        startTime: !bookingForm.startTime,
-        endTime: !bookingForm.endTime,
-      });
+    setError(null);
+    setMessage("");
+
+    if (bookingForm.startTime && isStartTimeInPast(bookingForm.startTime)) {
+      setBookingFormError(PAST_START_ERROR);
+      setBookingFieldErrors({ startTime: true, endTime: false });
       return;
     }
-    if (new Date(bookingForm.startTime) >= new Date(bookingForm.endTime)) {
-      setBookingFormError("Start time must be earlier than end time.");
-      setBookingFieldErrors({ startTime: true, endTime: true });
-      return;
-    }
-    request(async () => {
+
+    try {
       await client.post("/bookings", {
         startTime: datetimeLocalToUtcIso(bookingForm.startTime),
         endTime: datetimeLocalToUtcIso(bookingForm.endTime),
@@ -203,10 +232,15 @@ function App() {
       setBookingForm({ startTime: "", endTime: "" });
       await refreshData();
       setMessage("Booking created.");
-    });
+    } catch (reqError) {
+      const serverMessage = getApiErrorMessage(reqError);
+      setBookingFormError(serverMessage || "Could not create booking.");
+      setBookingFieldErrors(mapBookingFieldErrors(serverMessage));
+    }
   };
 
   function closeBookingDeleteDialog() {
+    pendingDeleteBookingIdRef.current = null;
     setBookingDeleteDialog({ open: false, type: null, booking: null });
   }
 
@@ -215,24 +249,38 @@ function App() {
     const isOwnBooking = currentUser?.id === booking.userId;
 
     if (!isOwnBooking && !canDeleteAny) {
+      pendingDeleteBookingIdRef.current = null;
       setBookingDeleteDialog({ open: true, type: "forbidden", booking });
       return;
     }
 
+    pendingDeleteBookingIdRef.current = booking.id;
     setBookingDeleteDialog({ open: true, type: "confirm", booking });
   }
 
-  async function confirmBookingDelete() {
-    const bookingId = bookingDeleteDialog.booking?.id;
+  async function confirmBookingDelete(event) {
+    event?.preventDefault();
+    const bookingId =
+      pendingDeleteBookingIdRef.current ?? bookingDeleteDialog.booking?.id;
     if (!bookingId) {
       return;
     }
-    closeBookingDeleteDialog();
-    request(async () => {
+
+    try {
       await client.delete(`/bookings/${bookingId}`);
+      closeBookingDeleteDialog();
+      setError(null);
       await refreshData();
       setMessage("Booking deleted.");
-    });
+    } catch (reqError) {
+      closeBookingDeleteDialog();
+      const serverMessage = getApiErrorMessage(reqError);
+      setError({
+        message: serverMessage || "Could not delete booking.",
+        status: reqError.response?.status,
+        details: null,
+      });
+    }
   }
 
   function openUserDeleteDialog(user) {
@@ -246,21 +294,32 @@ function App() {
     setUserDeleteDialog({ open: false, user: null });
   }
 
-  async function confirmUserDelete() {
+  async function confirmUserDelete(event) {
+    event?.preventDefault();
     const userId = userDeleteDialog.user?.id;
     if (!userId) {
       return;
     }
-    closeUserDeleteDialog();
-    request(async () => {
+
+    try {
       await client.delete(`/users/${userId}`);
+      closeUserDeleteDialog();
+      setError(null);
       const refreshedUsers = await loadUsers();
       await refreshData();
       if (selectedUserId === userId && refreshedUsers.length > 0) {
         setSelectedUserId(refreshedUsers[0].id);
       }
       setMessage("User deleted with their bookings.");
-    });
+    } catch (reqError) {
+      closeUserDeleteDialog();
+      const serverMessage = getApiErrorMessage(reqError);
+      setError({
+        message: serverMessage || "Could not delete user.",
+        status: reqError.response?.status,
+        details: null,
+      });
+    }
   }
 
   const handleCreateUser = (event) => {
@@ -358,7 +417,7 @@ function App() {
         <section className="card">
           <h2>Create Booking</h2>
           <p className="section-hint">
-            Pick a start and end time in your local timezone. Overlapping bookings are not allowed.
+            Pick a future start and end time (local timezone). Past times are blocked; other rules are checked on the server.
           </p>
           <form className="form-grid" onSubmit={handleCreateBooking}>
             <label>
@@ -367,13 +426,28 @@ function App() {
                 type="datetime-local"
                 className={bookingFieldErrors.startTime ? "input-error" : ""}
                 value={bookingForm.startTime}
-                onChange={(event) =>
-                  setBookingForm((prev) => ({
-                    ...prev,
-                    startTime: event.target.value,
-                  }))
-                }
-                required
+                min={minBookingStart}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setBookingFormError("");
+                  setBookingFieldErrors({ startTime: false, endTime: false });
+                  if (value && isStartTimeInPast(value)) {
+                    setBookingFormError(PAST_START_ERROR);
+                    setBookingFieldErrors({ startTime: true, endTime: false });
+                    return;
+                  }
+                  setBookingForm((prev) => {
+                    const next = { ...prev, startTime: value };
+                    if (
+                      prev.endTime &&
+                      value &&
+                      prev.endTime < value
+                    ) {
+                      next.endTime = "";
+                    }
+                    return next;
+                  });
+                }}
               />
             </label>
             <label>
@@ -382,20 +456,36 @@ function App() {
                 type="datetime-local"
                 className={bookingFieldErrors.endTime ? "input-error" : ""}
                 value={bookingForm.endTime}
-                onChange={(event) =>
+                min={minBookingEnd}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setBookingFormError("");
+                  setBookingFieldErrors({ startTime: false, endTime: false });
+                  if (
+                    value &&
+                    bookingForm.startTime &&
+                    value < bookingForm.startTime
+                  ) {
+                    setBookingFormError("startTime must be before endTime.");
+                    setBookingFieldErrors({ startTime: true, endTime: true });
+                    return;
+                  }
                   setBookingForm((prev) => ({
                     ...prev,
-                    endTime: event.target.value,
-                  }))
-                }
-                required
+                    endTime: value,
+                  }));
+                }}
               />
             </label>
             <button type="submit" className="btn-primary">
               Create Booking
             </button>
           </form>
-          {bookingFormError && <p className="inline-error">{bookingFormError}</p>}
+          {bookingFormError && (
+            <p className="inline-error" role="alert">
+              {bookingFormError}
+            </p>
+          )}
         </section>
       </div>
 
@@ -599,16 +689,20 @@ function App() {
             <AlertDialogTitle>Delete booking?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently remove booking{" "}
-              <strong>{bookingDeleteDialog.booking?.id}</strong> (
+              <strong>{bookingDeleteDialog.booking?.id}</strong>
               {bookingDeleteDialog.booking
-                ? `${formatDate(bookingDeleteDialog.booking.startTime)} - ${formatDate(bookingDeleteDialog.booking.endTime)}`
+                ? ` (${formatBookingTimeRange(
+                    bookingDeleteDialog.booking.startTime,
+                    bookingDeleteDialog.booking.endTime,
+                  )})`
                 : ""}
-              ).
+              .
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              type="button"
               variant="destructive"
               className="alert-danger-action"
               onClick={confirmBookingDelete}
@@ -638,6 +732,7 @@ function App() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              type="button"
               variant="destructive"
               className="alert-danger-action"
               onClick={confirmUserDelete}
