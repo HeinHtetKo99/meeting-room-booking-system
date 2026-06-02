@@ -327,10 +327,19 @@ function App() {
 
       <div className="top-grid">
         <section className="card">
-          <h2>Login As User</h2>
+          <h2>
+            {currentUser ? (
+              <>
+                Logged in as {currentUser.name}{" "}
+                <span className={`role-tag ${currentUser.role}`}>{currentUser.role}</span>
+              </>
+            ) : (
+              "Login As User"
+            )}
+          </h2>
           <p className="section-hint">{currentUser ? getRoleHint(currentUser.role) : "Select a user to continue."}</p>
           <label>
-            Current User
+            {currentUser ? "Switch user" : "Select user"}
             <select
               value={selectedUserId}
               onChange={(event) => {

@@ -38,6 +38,10 @@ h2 {
   font-size: 18px;
   font-weight: 700;
   color: #0f172a;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .section-hint {
